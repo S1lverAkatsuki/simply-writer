@@ -253,19 +253,33 @@ const handleInput = async () => {
 </template>
 
 <style scoped>
+::selection {
+  color: #000;
+  background: #d9d9d9;
+}
+
+.viewport {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: #f0f2f5;
+  display: flex;
+  flex-direction: column;
+}
+
 .init-prompt {
   background-color: white;
   border: 1px solid #e4e7ed;
-  width: 24em;
-  height: 20em;
+  width: 24rem;
+  height: 20rem;
   margin: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1em;
-  border-radius: 0.5em;
-  box-shadow: 0 0.6em 2em rgba(0, 0, 0, 0.08);
+  gap: 1rem;
+  border-radius: 0.5rem;
+  box-shadow: 0 0.6rem 2rem rgba(0, 0, 0, 0.08);
 }
 
 .u-cannt-see-me {
@@ -281,130 +295,97 @@ const handleInput = async () => {
 
 .init-divider {
   color: #909399;
-  font-size: 0.9em;
-}
-
-.status-bar {
-  z-index: 1;
-  width: 100vw;
-  height: 1em;
-  bottom: 0;
-  line-height: 1em;
-  border-top: 1px solid white;
-  background-color: #f5f5f5;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.status-bar span {
-  display: inline-block;
-  height: 100%;
-  font-size: 0.5em;
-  user-select: none;
-  vertical-align: middle;
-  padding: 0 1em;
-  color: #606266;
-}
-
-.status-bar span:hover {
-  background: #dcdfe6;
-  cursor: pointer;
-}
-
-.status-right {
-  display: flex;
-  align-items: center;
-  gap: 1em;
-}
-
-.zoom-controls {
-  display: flex;
-  align-items: center;
-}
-
-.zoom-button:hover {
-  background: #f5f7fa;
-}
-
-.zoom-indicator {
-  width: 6em;
-  text-align: center;
-}
-
-::selection {
-  color: #000;
-  background: #d9d9d9;
-}
-
-.viewport {
-  width: 100vw;
-  height: 100vh;
-  overflow: hidden;
-  background-color: #f0f2f5;
-  display: flex;
-  flex-direction: column;
-  touch-action: none;
+  font-size: 0.9rem;
 }
 
 .scroll-wrapper {
-  width: 100%;
-  height: 100%;
-
   flex: 1;
-
-  overflow-y: auto;
-  overflow-x: auto;
-  display: block;
-
-  padding: 3em;
+  overflow: auto;
+  padding: 3rem;
 }
 
 .zoom-container {
-  width: 100%;
-  height: 100%;
-
   margin: 0 auto;
-  padding: 10em 0;
+  padding: 5rem 0;
   position: relative;
   display: flex;
   justify-content: center;
   min-height: 100%;
-  box-sizing: border-box;
 }
 
 .page {
   transform-origin: top center;
-
   position: absolute;
   top: 0;
-
   tab-size: 4;
   width: 210mm;
   height: auto;
   min-height: 297mm;
-
-  display: block;
-  margin-left: auto;
-  margin-right: auto;
-
-  padding: 4em;
+  padding: 4rem;
   background-color: white;
-  box-shadow: 0 0.2em 1.5em rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0.2rem 1.5rem rgba(0, 0, 0, 0.1);
   outline: none;
   border: 1px solid #dcdfe6;
-
   word-break: break-all;
   overflow-wrap: anywhere;
   white-space: break-spaces;
-  text-rendering: optimizeLegibility;
-
   font-size: 15px;
   line-height: 1.6;
-  cursor: text;
-
   resize: none;
-  overflow-y: hidden;
+  overflow: hidden;
+  font-family: serif;
+}
+
+.status-bar {
+  height: 1.75rem;
+  background-color: #f5f5f5;
+  border-top: 1px solid #dcdfe6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+.status-left,
+.status-right {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
+.status-bar span {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 0.75rem;
+  font-size: 0.75rem;
+  color: #606266;
+  transition: background 0.1s;
+  cursor: pointer;
+}
+
+.status-bar span:hover {
+  background: #e4e7ed;
+}
+
+.zoom-indicator {
+  min-width: 3.5rem;
+  justify-content: center;
+}
+
+.word-count {
+  cursor: default !important;
+}
+
+.zoom-controls {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  height: 100%;
+}
+
+.word-count:hover {
+  background: transparent !important;
 }
 </style>
