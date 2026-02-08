@@ -14,6 +14,7 @@ const downloadUrl = ref<string | null>(null);
 const hasInit = ref<boolean>(false);
 
 const ENCODINGS = ["UTF-8", "GBK"] as const;
+// 神奇的类型魔法
 type Encoding = (typeof ENCODINGS)[number];
 
 const encoding = ref<Encoding>("UTF-8");
@@ -30,11 +31,11 @@ const requestTitle = (
   const input = prompt(message, placeholder);
   if (input === null) return null;
   const trimmed = input.trim();
-  const finalValue =
+  const tmp =
     trimmed.length > 0
       ? trimmed
       : (options.fallback ?? placeholder ?? DEFAULT_TITLE);
-  return purifyFilename(finalValue);
+  return purifyFilename(tmp);
 };
 
 const handleChangedTitle = () => {
@@ -64,19 +65,13 @@ const confirmLeave = (event: BeforeUnloadEvent) => {
   event.preventDefault();
 };
 
-onMounted(() => {
-  window.addEventListener("beforeunload", confirmLeave);
-});
+onMounted(() => window.addEventListener("beforeunload", confirmLeave));
 
-onUnmounted(() => {
-  window.removeEventListener("beforeunload", confirmLeave);
-});
+onUnmounted(() => window.removeEventListener("beforeunload", confirmLeave));
 
-const downloadFilename = computed(() => {
-  const trimmed = title.value?.trim();
-  const safe = trimmed && trimmed.length > 0 ? trimmed : DEFAULT_TITLE;
-  return `${safe}.txt`;
-});
+const downloadFilename = computed(
+  () => `${title.value?.trim() ?? DEFAULT_TITLE}.txt`,
+);
 
 const displayTitle = computed(() => title.value?.trim() || DEFAULT_TITLE);
 
@@ -116,8 +111,8 @@ const initWithFile = (file: File) => {
 
   reader.onload = async () => {
     text.value = typeof reader.result === "string" ? reader.result : "";
-    const rawName = file.name.replace(/\.[^/.]+$/, "");
-    const normalized = rawName.trim() || DEFAULT_TITLE;
+    const normalized =
+      file.name.replace(/\.[^/.]+$/, "").trim() || DEFAULT_TITLE;
     title.value = purifyFilename(normalized);
     hasInit.value = true;
     await nextTick();
@@ -133,7 +128,7 @@ const initWithCustomFile = () => {
   if (!selector || !file) return;
 
   initWithFile(file);
-  selector.value = ""; // 我也搞不懂为什么 ref 是字符串，好像是说拿到的只是个伪路径
+  selector.value = ""; //拿到的只是个伪路径，所以这里就用字符串了
 };
 
 const wordCount = computed(() => {
@@ -173,15 +168,12 @@ const changeZoomLevel = (delta: number) =>
   ));
 
 const handleCtrlWheel = (e: WheelEvent) => {
-  if (!e.ctrlKey) return;
   e.stopPropagation();
   const delta = e.deltaY > 0 ? -0.25 : 0.25;
   changeZoomLevel(delta);
 };
 
-const resetZoomLevel = () => {
-  zoomLevel.value = 1;
-};
+const resetZoomLevel = () => (zoomLevel.value = 1);
 
 const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === "Tab") {
@@ -191,7 +183,8 @@ const handleKeydown = (e: KeyboardEvent) => {
     document.execCommand("insertText", false, "\t");
   }
 
-  if ((e.key === "s" || e.key === "S") && (e.ctrlKey || e.metaKey)) {
+  // 只是多按了下大写锁定，你猜怎么着
+  if ((e.key === "s" || e.key === "S") && e.ctrlKey) {
     e.preventDefault();
     handleSaveFile();
   }
@@ -199,6 +192,7 @@ const handleKeydown = (e: KeyboardEvent) => {
 
 const handleInput = async () => {
   await nextTick();
+  // 等待前端把输入的东西插进 DOM 后才开始计算真实高度
   syncPageHeight();
 };
 
@@ -226,7 +220,14 @@ const handleDrop = (e: DragEvent) => {
         accept=".txt, .md"
         @change="initWithCustomFile"
       />
-      <div style="display: flex; flex-direction: column; gap: 0.5em; align-items: center;">
+      <div
+        style="
+          display: flex;
+          flex-direction: column;
+          gap: 0.5em;
+          align-items: center;
+        "
+      >
         <div>
           <button type="button" @click="triggerFileSelect">选择文件</button>
           <span> / 拖动文件到窗口内</span>
