@@ -13,6 +13,11 @@ const downloadUrl = ref<string | null>(null);
 
 const hasInit = ref<boolean>(false);
 
+const ENCODINGS = ["UTF-8", "GBK"] as const;
+type Encoding = (typeof ENCODINGS)[number];
+
+const encoding = ref<Encoding>("UTF-8");
+
 const DEFAULT_TITLE: string = "新文档";
 
 const purifyFilename = (raw: string) => raw.replace(/[\/:*?"<>|]/g, "_");
@@ -105,11 +110,8 @@ const handleSaveFile = async () => {
 };
 
 const triggerFileSelect = () => fileSelectorRef.value?.click();
-const initWithCustomFile = () => {
-  const selector = fileSelectorRef.value;
-  const file = selector?.files?.[0];
-  if (!selector || !file) return;
 
+const initWithFile = (file: File) => {
   const reader = new FileReader();
 
   reader.onload = async () => {
@@ -118,12 +120,20 @@ const initWithCustomFile = () => {
     const normalized = rawName.trim() || DEFAULT_TITLE;
     title.value = purifyFilename(normalized);
     hasInit.value = true;
-    selector.value = ""; // 我也搞不懂为什么 ref 是字符串，好像是说拿到的只是个伪路径
     await nextTick();
     syncPageHeight();
   };
 
-  reader.readAsText(file, "utf-8");
+  reader.readAsText(file, encoding.value);
+};
+
+const initWithCustomFile = () => {
+  const selector = fileSelectorRef.value;
+  const file = selector?.files?.[0];
+  if (!selector || !file) return;
+
+  initWithFile(file);
+  selector.value = ""; // 我也搞不懂为什么 ref 是字符串，好像是说拿到的只是个伪路径
 };
 
 const wordCount = computed(() => {
@@ -161,6 +171,7 @@ const changeZoomLevel = (delta: number) =>
   (zoomLevel.value = Number(
     Math.max(0.5, Math.min(3, zoomLevel.value + delta)).toFixed(2),
   ));
+
 const handleCtrlWheel = (e: WheelEvent) => {
   if (!e.ctrlKey) return;
   e.stopPropagation();
@@ -190,20 +201,44 @@ const handleInput = async () => {
   await nextTick();
   syncPageHeight();
 };
+
+const handleDrop = (e: DragEvent) => {
+  const transfer = e.dataTransfer;
+  if (!transfer) return;
+
+  initWithFile(transfer.files[0]!);
+};
 </script>
 
 <template>
-  <main class="viewport" @wheel.ctrl.prevent="handleCtrlWheel">
+  <main
+    class="viewport"
+    @wheel.ctrl.prevent="handleCtrlWheel"
+    @drop.prevent="handleDrop"
+    @dragover.prevent
+  >
     <div v-if="!hasInit" class="init-prompt">
       <!-- 看不到这个 -->
       <input
         type="file"
         ref="fileSelectorRef"
         class="u-cannt-see-me"
-        accept=".txt"
+        accept=".txt, .md"
         @change="initWithCustomFile"
       />
-      <button type="button" @click="triggerFileSelect">选择文件</button>
+      <div style="display: flex; flex-direction: column; gap: 0.5em; align-items: center;">
+        <div>
+          <button type="button" @click="triggerFileSelect">选择文件</button>
+          <span> / 拖动文件到窗口内</span>
+        </div>
+        <div>
+          <span>读取编码：</span>
+          <select v-model="encoding">
+            <option v-for="item in ENCODINGS" :value="item">{{ item }}</option>
+          </select>
+        </div>
+      </div>
+
       <span style="text-align: center">OR</span>
       <button @click="initWithDefaultFile">直接进入</button>
     </div>
@@ -228,7 +263,10 @@ const handleInput = async () => {
         </div>
       </div>
       <div class="status-bar">
-        <span @click="handleChangedTitle">更改标题</span>
+        <div class="status-left">
+          <span @click="handleChangedTitle">更改标题</span>
+        </div>
+
         <span @click="handleSaveFile">保存</span>
         <div class="status-right">
           <div class="zoom-controls">
