@@ -1,141 +1,86 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 
 const scrollWrapperRef = ref<HTMLElement | null>(null);
 const pageRef = ref<HTMLTextAreaElement | null>(null);
-const fileSelectorRef = ref<HTMLInputElement | null>(null);
 
-const text = ref<string | null>(null);
+const text = ref<string>("");
 const title = ref<string | null>(null);
 
-const downloaderRef = ref<HTMLAnchorElement | null>(null);
-const downloadUrl = ref<string | null>(null);
-
 const hasInit = ref<boolean>(false);
+const saveStatus = ref<"saved" | "modified">("saved");
+const isLoading = ref<boolean>(false);
+const lastSavedContent = ref<string>("");
 
-const ENCODINGS = ["UTF-8", "GBK"] as const;
-// 神奇的类型魔法
-type Encoding = (typeof ENCODINGS)[number];
+const API_BASE_URL = "/api/content";
 
-const encoding = ref<Encoding>("UTF-8");
-
-const DEFAULT_TITLE: string = "新文档";
-
-const purifyFilename = (raw: string) => raw.replace(/[\/:*?"<>|]/g, "_");
-
-const requestTitle = (
-  message: string,
-  options: { initial?: string; fallback?: string } = {},
-): string | null => {
-  const placeholder = options.initial ?? title.value ?? DEFAULT_TITLE;
-  const input = prompt(message, placeholder);
-  if (input === null) return null;
-  const trimmed = input.trim();
-  const tmp =
-    trimmed.length > 0
-      ? trimmed
-      : (options.fallback ?? placeholder ?? DEFAULT_TITLE);
-  return purifyFilename(tmp);
-};
-
-const handleChangedTitle = () => {
-  const value = requestTitle("输入新的标题", {
-    initial: title.value ?? DEFAULT_TITLE,
-    fallback: DEFAULT_TITLE,
-  });
-  if (value !== null) {
-    title.value = value;
-  }
-};
-
-const initWithDefaultFile = () => {
-  const result = requestTitle("输入标题（留空则使用默认）", {
-    initial: DEFAULT_TITLE,
-    fallback: DEFAULT_TITLE,
-  });
-  if (result === null) return;
-
-  hasInit.value = true;
-  text.value = "";
-  title.value = result;
-};
+watch(text, (newText) => {
+  if (!hasInit.value) return;
+  saveStatus.value = newText === lastSavedContent.value ? "saved" : "modified";
+});
 
 const confirmLeave = (event: BeforeUnloadEvent) => {
   if (!hasInit.value) return;
   event.preventDefault();
 };
 
-onMounted(() => window.addEventListener("beforeunload", confirmLeave));
+onMounted(async () => {
+  window.addEventListener("beforeunload", confirmLeave);
+  await loadContent();
+  hasInit.value = true;
+  syncPageHeight();
+});
 
 onUnmounted(() => window.removeEventListener("beforeunload", confirmLeave));
 
-const downloadFilename = computed(
-  () => `${title.value?.trim() ?? DEFAULT_TITLE}.txt`,
-);
+const loadContent = async () => {
+  try {
+    isLoading.value = true;
+    const response = await fetch(API_BASE_URL);
+    if (!response.ok) throw new Error("Failed to load.");
 
-const displayTitle = computed(() => title.value?.trim() || DEFAULT_TITLE);
+    const data = await response.json();
+
+    text.value = data.content;
+    lastSavedContent.value = data.content;
+
+    if (data.title) document.title = data.title;
+    saveStatus.value = data.saved ? "saved" : "modified";
+  } catch (error) {
+    console.error("Load error:", error);
+  } finally {
+    isLoading.value = false;
+  }
+};
 
 const handleSaveFile = async () => {
-  if (!hasInit.value) return;
+  if (isLoading.value) return;
 
-  if (downloadUrl.value) {
-    URL.revokeObjectURL(downloadUrl.value);
-    downloadUrl.value = null;
-  }
+  try {
+    isLoading.value = true;
+    const response = await fetch(API_BASE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        content: text.value,
+        title: document.title,
+        saved: false,
+      }),
+    });
 
-  const payload = text.value ?? "";
-  const blob = new Blob([payload], { type: "text/plain;charset=utf-8" });
-  downloadUrl.value = URL.createObjectURL(blob);
+    if (!response.ok) throw new Error("Save error");
 
-  // 先确保隐藏的 a 标签信息以及写入进去，再点击才能更新
-  await nextTick();
-
-  if (downloaderRef.value) {
-    downloaderRef.value.download = downloadFilename.value;
-    downloaderRef.value.click();
-  }
-
-  // 先去处理下载，再在下一个事件循环里释放 ObjectURL
-  await nextTick();
-
-  if (downloadUrl.value) {
-    URL.revokeObjectURL(downloadUrl.value);
-    downloadUrl.value = null;
+    const data = await response.json();
+    text.value = data.content;
+    if (data.title) document.title = data.title;
+    lastSavedContent.value = data.content;
+    saveStatus.value = "saved";
+  } catch (error) {
+    alert("保存失败，请确认是否关闭了后端，若关闭请以相同端口重启后端。");
+  } finally {
+    isLoading.value = false;
   }
 };
-
-const triggerFileSelect = () => fileSelectorRef.value?.click();
-
-const initWithFile = (file: File) => {
-  const reader = new FileReader();
-
-  reader.onload = async () => {
-    text.value = typeof reader.result === "string" ? reader.result : "";
-    const normalized =
-      file.name.replace(/\.[^/.]+$/, "").trim() || DEFAULT_TITLE;
-    title.value = purifyFilename(normalized);
-    hasInit.value = true;
-    await nextTick();
-    syncPageHeight();
-  };
-
-  reader.readAsText(file, encoding.value);
-};
-
-const initWithCustomFile = () => {
-  const selector = fileSelectorRef.value;
-  const file = selector?.files?.[0];
-  if (!selector || !file) return;
-
-  initWithFile(file);
-  selector.value = ""; //拿到的只是个伪路径，所以这里就用字符串了
-};
-
-const wordCount = computed(() => {
-  if (!text.value) return 0;
-  // 统计的是非空字符的数量
-  return text.value.replace(/\s/g, "").length;
-});
 
 const HEIGHT: number = 1123; // 96 dpi 下 A4 纸像素高度
 const pageHeightPx = ref<number>(HEIGHT);
@@ -154,10 +99,8 @@ const syncPageHeight = () => {
   }
 };
 
-watch(title, async () => {
-  document.title = displayTitle.value;
-  await nextTick();
-  syncPageHeight();
+watch(title, () => {
+  document.title = title.value ?? "Simply Writer";
 });
 
 const zoomLevel = ref<number>(1);
@@ -195,99 +138,50 @@ const handleInput = async () => {
   // 等待前端把输入的东西插进 DOM 后才开始计算真实高度
   syncPageHeight();
 };
-
-const handleDrop = (e: DragEvent) => {
-  const transfer = e.dataTransfer;
-  if (!transfer) return;
-
-  initWithFile(transfer.files[0]!);
-};
 </script>
 
 <template>
-  <main
-    class="viewport"
-    @wheel.ctrl.prevent="handleCtrlWheel"
-    @drop.prevent="handleDrop"
-    @dragover.prevent
-  >
-    <div v-if="!hasInit" class="init-prompt">
-      <!-- 看不到这个 -->
-      <input
-        type="file"
-        ref="fileSelectorRef"
-        class="u-cannt-see-me"
-        accept=".txt, .md"
-        @change="initWithCustomFile"
-      />
+  <main class="viewport" @wheel.ctrl.prevent="handleCtrlWheel">
+    <div class="scroll-wrapper" ref="scrollWrapperRef">
       <div
-        style="
-          display: flex;
-          flex-direction: column;
-          gap: 0.5em;
-          align-items: center;
-        "
+        class="zoom-container"
+        :style="{
+          width: `${793 * zoomLevel}px`,
+          height: `${pageHeightPx * zoomLevel}px`,
+        }"
       >
-        <div>
-          <button type="button" @click="triggerFileSelect">选择文件</button>
-          <span> / 拖动文件到窗口内</span>
-        </div>
-        <div>
-          <span>读取编码：</span>
-          <select v-model="encoding">
-            <option v-for="item in ENCODINGS" :value="item">{{ item }}</option>
-          </select>
-        </div>
+        <textarea
+          ref="pageRef"
+          class="page"
+          @keydown="handleKeydown"
+          @input="handleInput"
+          spellcheck="false"
+          v-model="text"
+          :style="{ transform: `scale(${zoomLevel})` }"
+        ></textarea>
       </div>
-
-      <span style="text-align: center">OR</span>
-      <button @click="initWithDefaultFile">直接进入</button>
     </div>
-    <template v-else>
-      <div class="scroll-wrapper" ref="scrollWrapperRef">
-        <div
-          class="zoom-container"
-          :style="{
-            width: `${793 * zoomLevel}px`,
-            height: `${pageHeightPx * zoomLevel}px`,
-          }"
+    <div class="status-bar">
+      <div class="status-left">
+        <span
+          class="save-indicator"
+          :class="{ modified: saveStatus === 'modified' }"
+          @click="handleSaveFile"
         >
-          <textarea
-            ref="pageRef"
-            class="page"
-            @keydown="handleKeydown"
-            @input="handleInput"
-            spellcheck="false"
-            v-model="text"
-            :style="{ transform: `scale(${zoomLevel})` }"
-          ></textarea>
-        </div>
+          {{ saveStatus === "modified" ? "● 已修改" : "✓ 已保存" }}
+        </span>
       </div>
-      <div class="status-bar">
-        <div class="status-left">
-          <span @click="handleChangedTitle">更改标题</span>
+      <div class="status-right">
+        <div class="zoom-controls">
+          <span @click="changeZoomLevel(-0.25)">-</span>
+          <span class="zoom-indicator" @click="resetZoomLevel">
+            {{ Math.round(zoomLevel * 100) }}%
+          </span>
+          <span @click="changeZoomLevel(0.25)">+</span>
         </div>
-
-        <span @click="handleSaveFile">保存</span>
-        <div class="status-right">
-          <div class="zoom-controls">
-            <span @click="changeZoomLevel(-0.25)">-</span>
-            <span class="zoom-indicator" @click="resetZoomLevel">
-              {{ Math.round(zoomLevel * 100) }}%
-            </span>
-            <span @click="changeZoomLevel(0.25)">+</span>
-          </div>
-          <span>{{ wordCount }} 个字</span>
-        </div>
+        <span class="word-count">{{ text.length }} 个字</span>
       </div>
-    </template>
-    <a
-      v-if="downloadUrl"
-      ref="downloaderRef"
-      class="u-cannt-see-me"
-      :href="downloadUrl"
-      :download="downloadFilename"
-    />
+    </div>
   </main>
 </template>
 
@@ -386,7 +280,12 @@ const handleDrop = (e: DragEvent) => {
   flex-shrink: 0;
 }
 
-.status-left,
+.status-left {
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
 .status-right {
   display: flex;
   align-items: center;
@@ -405,6 +304,20 @@ const handleDrop = (e: DragEvent) => {
 }
 
 .status-bar span:hover {
+  background: #e4e7ed;
+}
+
+.save-indicator {
+  cursor: pointer;
+  color: #67c23a;
+  font-weight: 500;
+}
+
+.save-indicator.modified {
+  color: #e6a23c;
+}
+
+.save-indicator:hover {
   background: #e4e7ed;
 }
 
