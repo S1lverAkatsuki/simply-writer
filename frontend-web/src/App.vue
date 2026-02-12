@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 
 const scrollWrapperRef = ref<HTMLElement | null>(null);
 const pageRef = ref<HTMLTextAreaElement | null>(null);
@@ -7,47 +7,83 @@ const pageRef = ref<HTMLTextAreaElement | null>(null);
 const text = ref<string>("");
 const title = ref<string | null>(null);
 
-const hasInit = ref<boolean>(false);
-const saveStatus = ref<"saved" | "modified">("saved");
-const isLoading = ref<boolean>(false);
+type SaveState = { type: "unlinked" } | { type: "linked"; dirty: boolean };
+
+const saveState = ref<SaveState>({ type: "unlinked" });
+
+const isLinked = computed(() => saveState.value.type === "linked");
+const isDirty = computed(
+  () => saveState.value.type === "linked" && saveState.value.dirty,
+);
+const shouldWarnOnLeave = computed(
+  () =>
+    saveState.value.type === "unlinked" ||
+    (saveState.value.type === "linked" && saveState.value.dirty),
+);
+
+const markLinked = (dirty: boolean) =>
+  (saveState.value = { type: "linked", dirty });
+const markUnlinked = () => (saveState.value = { type: "unlinked" });
+const markDirty = () => {
+  if (saveState.value.type === "linked") saveState.value.dirty = true;
+};
+const markSaved = () => {
+  if (saveState.value.type === "linked") saveState.value.dirty = false;
+};
+
 const lastSavedContent = ref<string>("");
+const isLoading = ref<boolean>(false);
 
 const API_BASE_URL = "/api/content";
 
 watch(text, (newText) => {
-  if (!hasInit.value) return;
-  saveStatus.value = newText === lastSavedContent.value ? "saved" : "modified";
+  if (!isLinked.value) return;
+  if (newText === lastSavedContent.value) {
+    markSaved();
+  } else {
+    markDirty();
+  }
 });
 
 const confirmLeave = (event: BeforeUnloadEvent) => {
-  if (!hasInit.value) return;
+  if (!shouldWarnOnLeave.value) return;
   event.preventDefault();
+  event.returnValue = "";
 };
 
 onMounted(async () => {
   window.addEventListener("beforeunload", confirmLeave);
   await loadContent();
-  hasInit.value = true;
   syncPageHeight();
 });
 
 onUnmounted(() => window.removeEventListener("beforeunload", confirmLeave));
 
 const loadContent = async () => {
+  if (isLoading.value) return;
   try {
     isLoading.value = true;
     const response = await fetch(API_BASE_URL);
-    if (!response.ok) throw new Error("Failed to load.");
+    if (!response.ok) throw new Error("Load error");
 
     const data = await response.json();
+    const content = data.content ?? "";
 
-    text.value = data.content;
-    lastSavedContent.value = data.content;
+    text.value = content;
+    lastSavedContent.value = content;
 
-    if (data.title) document.title = data.title;
-    saveStatus.value = data.saved ? "saved" : "modified";
+    if (typeof data.title === "string") {
+      title.value = data.title;
+    }
+
+    if (data.saved) {
+      markLinked(false);
+    } else {
+      markUnlinked();
+    }
   } catch (error) {
     console.error("Load error:", error);
+    markUnlinked();
   } finally {
     isLoading.value = false;
   }
@@ -55,7 +91,6 @@ const loadContent = async () => {
 
 const handleSaveFile = async () => {
   if (isLoading.value) return;
-
   try {
     isLoading.value = true;
     const response = await fetch(API_BASE_URL, {
@@ -72,9 +107,9 @@ const handleSaveFile = async () => {
 
     const data = await response.json();
     text.value = data.content;
-    if (data.title) document.title = data.title;
+    document.title = data.title;
     lastSavedContent.value = data.content;
-    saveStatus.value = "saved";
+    markLinked(false);
   } catch (error) {
     alert("保存失败，请确认是否关闭了后端，若关闭请以相同端口重启后端。");
   } finally {
@@ -138,6 +173,17 @@ const handleInput = async () => {
   // 等待前端把输入的东西插进 DOM 后才开始计算真实高度
   syncPageHeight();
 };
+
+const saveTip = computed<string>(() => {
+  if (saveState.value.type === "unlinked") {
+    return "⚠ 未关联";
+  }
+  if (saveState.value.dirty) {
+    return "● 已修改";
+  } else {
+    return "✓ 已保存";
+  }
+});
 </script>
 
 <template>
@@ -165,10 +211,13 @@ const handleInput = async () => {
       <div class="status-left">
         <span
           class="save-indicator"
-          :class="{ modified: saveStatus === 'modified' }"
+          :class="{
+            modified: isDirty,
+            unsafed: !isLinked,
+          }"
           @click="handleSaveFile"
         >
-          {{ saveStatus === "modified" ? "● 已修改" : "✓ 已保存" }}
+          {{ saveTip }}
         </span>
       </div>
       <div class="status-right">
@@ -315,6 +364,10 @@ const handleInput = async () => {
 
 .save-indicator.modified {
   color: #e6a23c;
+}
+
+.save-indicator.unsafed {
+  color: #f56c6c;
 }
 
 .save-indicator:hover {
