@@ -34,7 +34,8 @@ const markSaved = () => {
 const lastSavedContent = ref<string>("");
 const isLoading = ref<boolean>(false);
 
-const API_BASE_URL = "/api/content";
+const API_CONTENT_URL = "/api/content";
+const API_STATUS_URL = "/api/status";
 
 watch(text, (newText) => {
   if (!isLinked.value) return;
@@ -63,18 +64,14 @@ const loadContent = async () => {
   if (isLoading.value) return;
   try {
     isLoading.value = true;
-    const response = await fetch(API_BASE_URL);
+    const response = await fetch(API_CONTENT_URL);
     if (!response.ok) throw new Error("Load error");
 
     const data = await response.json();
-    const content = data.content ?? "";
 
-    text.value = content;
-    lastSavedContent.value = content;
-
-    if (typeof data.title === "string") {
-      title.value = data.title;
-    }
+    title.value = data.title;
+    text.value = data.content;
+    lastSavedContent.value = data.content;
 
     if (data.saved) {
       markLinked(false);
@@ -93,25 +90,31 @@ const handleSaveFile = async () => {
   if (isLoading.value) return;
   try {
     isLoading.value = true;
-    const response = await fetch(API_BASE_URL, {
+    const response = await fetch(API_CONTENT_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         content: text.value,
-        title: document.title,
+        title: title.value,
         saved: false,
       }),
     });
 
-    if (!response.ok) throw new Error("Save error");
+    if (!response.ok) throw new Error();
 
     const data = await response.json();
     text.value = data.content;
-    document.title = data.title;
+    title.value = data.title;
     lastSavedContent.value = data.content;
-    markLinked(false);
+
+    if (data.saved) {
+      markLinked(false);
+    } else {
+      markUnlinked();
+    }
   } catch (error) {
-    alert("保存失败，请确认是否关闭了后端，若关闭请以相同端口重启后端。");
+    markUnlinked();
+    alert("Error in saving files, check your backend state.");
   } finally {
     isLoading.value = false;
   }
@@ -176,14 +179,36 @@ const handleInput = async () => {
 
 const saveTip = computed<string>(() => {
   if (saveState.value.type === "unlinked") {
-    return "⚠ 未关联";
+    return "⚠ Unlinked";
   }
   if (saveState.value.dirty) {
-    return "● 已修改";
+    return "● Modified";
   } else {
-    return "✓ 已保存";
+    return "✓ Saved";
   }
 });
+
+const CHECK_LINK_MS = 1000 * 30; // 半分钟一次
+
+const checkLink = async () => {
+  try {
+    const response = await fetch(API_STATUS_URL);
+    if (!response.ok) {
+      markUnlinked();
+      return;
+    }
+
+    if (saveState.value.type === "linked" && !saveState.value.dirty) {
+      await loadContent();
+    }
+  } catch (err) {
+    markUnlinked();
+  } finally {
+    setTimeout(checkLink, CHECK_LINK_MS);
+  }
+};
+
+onMounted(checkLink);
 </script>
 
 <template>

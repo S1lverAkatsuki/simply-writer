@@ -1,6 +1,6 @@
 [package]
-name = "backend"
-version = "0.1.0"
+name = "simply-writer"
+version = "0.1.1"
 edition = "2024"
 
 [dependencies]
@@ -12,6 +12,12 @@ tower-http = { version = "0.6", features = ["cors", "fs"] }
 rfd = "0.17.2"
 clap = { version = "4.5", features = ["derive"] }
 press-btn-continue = "0.2.0"
+encoding_rs = "0.8.35"
+anyhow = "1.0.101"
 
 [build-dependencies]
 winresource = "0.1"
+
+[[bin]]
+name = "simply-writer"
+path = "src/main.rs"
